@@ -1,6 +1,6 @@
 # PS TimeSheet
 
-A Jira worklog pivot tool — turns raw Jira worklogs into ready-to-use monthly reporting views for finance and engineering leadership.
+A Jira worklog pivot tool > turns raw Jira worklogs into ready-to-use monthly reporting views for finance and engineering leadership.
 
 > This README describes the real architecture behind the tool, with internal URLs, credentials, and infrastructure identifiers redacted/genericized. It documents a pattern, not a runnable standalone repo > see [A note on reuse](#a-note-on-reuse).
 
