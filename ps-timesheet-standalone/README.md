@@ -45,8 +45,8 @@ The real PS TimeSheet is a Backstage plugin wired into an internal Developer Por
 ### 1. Clone and install
 
 ```bash
-git clone (https://github.com/WomaninTech-spec/timesheet-portfolio.git)
-cd ps-timesheet-standalone
+git clone https://github.com/WomaninTech-spec/timesheet-portfolio.git
+cd timesheet-portfolio/ps-timesheet-standalone
 npm install
 ```
 
