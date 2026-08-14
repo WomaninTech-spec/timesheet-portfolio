@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PS TimeSheet — standalone</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --maturation: #2f6fed;
+      --build: #16a394;
+      --border: #e2e5e9;
+      --muted: #6b7280;
+    }
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 24px; color: #1a1f29; background: #fafbfc; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    p.subtitle { color: var(--muted); margin-top: 0; font-size: 14px; }
+    .controls { display: flex; gap: 12px; align-items: end; margin: 20px 0; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 12px; color: var(--muted); }
+    input, button { font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); }
+    button { background: #1a1f29; color: white; border: none; cursor: pointer; }
+    button.secondary { background: white; color: #1a1f29; border: 1px solid var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .tab { padding: 8px 14px; cursor: pointer; font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: #1a1f29; border-bottom-color: #1a1f29; font-weight: 600; }
+    table { border-collapse: collapse; width: 100%; background: white; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+    th { background: #f3f4f6; font-weight: 600; }
+    tr.space-row { cursor: pointer; font-weight: 600; background: #f9fafb; }
+    tr.person-row td:first-child { padding-left: 28px; color: var(--muted); font-weight: 400; }
+    .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; width: 140px; background: #eee; }
+    .bar .maturation { background: var(--maturation); }
+    .bar .build { background: var(--build); }
+    .status { font-size: 13px; color: var(--muted); margin: 8px 0; }
+    .hidden { display: none; }
+    .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  </style>
+</head>
+<body>
+  <h1>PS TimeSheet — standalone</h1>
+  <p class="subtitle">Jira worklog pivot, recreated as an independent tool (same logic, no internal dependencies).</p>
+
+  <div class="controls">
+    <div class="field">
+      <label for="startMonth">From</label>
+      <input type="month" id="startMonth" />
+    </div>
+    <div class="field">
+      <label for="endMonth">To</label>
+      <input type="month" id="endMonth" />
+    </div>
+    <button id="loadBtn">Load</button>
+    <button class="secondary" id="exportPivotBtn">Export pivot (CSV)</button>
+    <button class="secondary" id="exportSummaryBtn">Export summary (CSV)</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="pivot">Pivot</div>
+    <div class="tab" data-tab="summary">Summary</div>
+  </div>
+
+  <div class="legend">
+    <span><i class="dot" style="background: var(--maturation)"></i> Maturation</span>
+    <span><i class="dot" style="background: var(--build)"></i> Build</span>
+  </div>
+
+  <div id="pivotView"></div>
+  <div id="summaryView" class="hidden"></div>
+
+  <script>
+    const startInput = document.getElementById('startMonth');
+    const endInput = document.getElementById('endMonth');
+    const statusEl = document.getElementById('status');
+    const pivotView = document.getElementById('pivotView');
+    const summaryView = document.getElementById('summaryView');
+
+    // Default range: last 3 months, matching the production tool's default.
+    const now = new Date();
+    const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const startDateObj = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const start = `${startDateObj.getFullYear()}-${String(startDateObj.getMonth() + 1).padStart(2, '0')}`;
+    startInput.value = start;
+    endInput.value = end;
+
+    let lastResult = null;
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        const isPivot = tab.dataset.tab === 'pivot';
+        pivotView.classList.toggle('hidden', !isPivot);
+        summaryView.classList.toggle('hidden', isPivot);
+      });
+    });
+
+    async function load() {
+      const startMonth = startInput.value;
+      const endMonth = endInput.value;
+      if (!startMonth || !endMonth) return;
+
+      statusEl.textContent = 'Loading…';
+      try {
+        const res = await fetch(`/api/pivot?startMonth=${startMonth}&endMonth=${endMonth}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+
+        lastResult = data;
+        statusEl.textContent = data.cached ? 'Loaded from cache.' : 'Loaded from Jira.';
+        renderPivot(data.pivot);
+        renderSummary(data.summary);
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    function renderPivot(pivot) {
+      const spaces = Object.keys(pivot).sort(
+        (a, b) => totalForSpace(pivot[b]) - totalForSpace(pivot[a])
+      );
+
+      let html = '<table><thead><tr><th>Space / Person</th><th>Maturation (d)</th><th>Build (d)</th><th>Total (d)</th></tr></thead><tbody>';
+
+      let grandMaturation = 0;
+      let grandBuild = 0;
+
+      for (const space of spaces) {
+        const people = pivot[space];
+        let spaceMaturation = 0;
+        let spaceBuild = 0;
+        for (const person of Object.values(people)) {
+          for (const monthEntry of Object.values(person)) {
+            spaceMaturation += monthEntry.maturationDays;
+            spaceBuild += monthEntry.buildDays;
+          }
+        }
+        grandMaturation += spaceMaturation;
+        grandBuild += spaceBuild;
+
+        html += `<tr class="space-row" data-space="${space}"><td>▸ ${space}</td><td>${round(spaceMaturation)}</td><td>${round(spaceBuild)}</td><td>${round(spaceMaturation + spaceBuild)}</td></tr>`;
+
+        for (const [person, months] of Object.entries(people)) {
+          let personMaturation = 0;
+          let personBuild = 0;
+          for (const monthEntry of Object.values(months)) {
+            personMaturation += monthEntry.maturationDays;
+            personBuild += monthEntry.buildDays;
+          }
+          html += `<tr class="person-row" data-space="${space}" style="display:none"><td>${person}</td><td>${round(personMaturation)}</td><td>${round(personBuild)}</td><td>${round(personMaturation + personBuild)}</td></tr>`;
+        }
+      }
+
+      html += `<tr><td><strong>Grand total</strong></td><td><strong>${round(grandMaturation)}</strong></td><td><strong>${round(grandBuild)}</strong></td><td><strong>${round(grandMaturation + grandBuild)}</strong></td></tr>`;
+      html += '</tbody></table>';
+      pivotView.innerHTML = html;
+
+      pivotView.querySelectorAll('.space-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          const space = row.dataset.space;
+          pivotView.querySelectorAll(`.person-row[data-space="${space}"]`).forEach((r) => {
+            r.style.display = r.style.display === 'none' ? '' : 'none';
+          });
+        });
+      });
+    }
+
+    function renderSummary(summary) {
+      let html = '<table><thead><tr><th>Person</th><th>Maturation (d)</th><th>Build (d)</th><th>Total (d)</th><th>Distribution</th></tr></thead><tbody>';
+      const people = Object.entries(summary).sort((a, b) => b[1].totalDays - a[1].totalDays);
+
+      for (const [person, entry] of people) {
+        const total = entry.totalDays || 1;
+        const maturationPct = Math.round((entry.maturationDays / total) * 100);
+        html += `<tr>
+          <td>${person}</td>
+          <td>${round(entry.maturationDays)}</td>
+          <td>${round(entry.buildDays)}</td>
+          <td>${round(entry.totalDays)}</td>
+          <td><div class="bar"><div class="maturation" style="width:${maturationPct}%"></div><div class="build" style="width:${100 - maturationPct}%"></div></div></td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      summaryView.innerHTML = html;
+    }
+
+    function totalForSpace(people) {
+      let total = 0;
+      for (const months of Object.values(people)) {
+        for (const entry of Object.values(months)) total += entry.totalDays;
+      }
+      return total;
+    }
+
+    function round(n) {
+      return Math.round(n * 100) / 100;
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', load);
+    document.getElementById('exportPivotBtn').addEventListener('click', () => {
+      window.location = `/api/pivot.csv?startMonth=${startInput.value}&endMonth=${endInput.value}`;
+    });
+    document.getElementById('exportSummaryBtn').addEventListener('click', () => {
+      window.location = `/api/summary.csv?startMonth=${startInput.value}&endMonth=${endInput.value}`;
+    });
+
+    load();
+  </script>
+</body>
+</html>
