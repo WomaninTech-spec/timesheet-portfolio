@@ -42,21 +42,31 @@ GitHub activity alongside Jira worklogs.
 
 ## My contribution
 
-I worked on this as a **full-stack developer**: front-end work on the
-pivot/summary UI logic and layout, and back-end work on the Express proxy
-server that talked to the Jira and GitHub APIs. I also contributed fixes
-around credential handling (removing hardcoded values in favor of
-environment variables) and cleanup of the service catalog metadata.
+I was **Head of Platform** on this project and owned it end to end:
+
+- **Full implementation**: I wrote the entire codebase — the Express proxy
+  server, the front-end pivot/summary/heatmap UI, and the Jira/GitHub API
+  integrations.
+- **Security**: I designed the credential-handling model (env vars for
+  server-side secrets, session-only storage client-side, no server-side
+  persistence, local-only deployment), and fixed issues such as hardcoded
+  credentials found during hardening passes.
+- **CI**: I set up the CI workflow (GitHub Actions) and the Backstage
+  catalog descriptor so the service was discoverable and consistently
+  checked in the internal developer portal.
 
 ## Skills demonstrated
 
+- Ownership of a project end-to-end as platform lead: architecture,
+  implementation, security, and CI/CD
 - Node.js / Express (lightweight API proxying, CORS handling)
 - Front-end data visualization (pivot tables, heatmaps) without a heavy
   framework
 - Third-party API integration (Jira Cloud REST API, GitHub API)
 - Secure-by-default credential handling (env vars, session-only storage,
   no server-side persistence)
-- Internal developer-portal documentation (Backstage catalog descriptors)
+- CI/CD setup (GitHub Actions) and internal developer-portal documentation
+  (Backstage catalog descriptors)
 
 ---
 
